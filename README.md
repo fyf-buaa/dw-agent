@@ -1,3 +1,20 @@
+# dw-agent
+
+面向 digital-wifa 的附属 LLM 执行器，基于固定提交的 Pi 源码改造。提供共享人格和历史的聊天 / agent 双模式、分句动作与台词输出，以及 WebSocket v1 通信。
+
+- [启动与配置](packages/dw-executor/README.md)
+- [Socket 协议](packages/dw-executor/docs/protocol-v1.md)
+- [JSON Schema](packages/dw-executor/schemas/protocol-v1.schema.json)
+- [Godot 客户端示例](packages/dw-executor/examples/godot/dw_agent_client.gd)
+
+在仓库根目录配置模型凭据后运行 `npm run start:dw`。验证命令：`npm run test:dw`、`npm run check`。ARDY、TTS 与播放编排属于 digital-wifa。
+
+管理界面：启动后打开 `http://127.0.0.1:17850/`，使用服务的访问令牌连接。支持会话管理、聊天 / Agent 切换、任务恢复与执行详情。
+
+上游基线：`earendil-works/pi@698a2d23b86a5045dd54554354a5e0cb7e466795`。下面保留 Pi 上游说明。
+
+---
+
 <p align="center">
   <a href="https://pi.dev">
     <img alt="pi logo" src="https://pi.dev/logo-auto.svg" width="128">

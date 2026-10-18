@@ -171,6 +171,8 @@ function mergeHeaders(
 
 /** Configured pi-ai Models collection used by coding-agent and SDK consumers. */
 export class ModelRuntime implements Models {
+	/** Invoked once at the provider boundary, including requests made by extensions. */
+	requestGuard?: (model: AnyModel) => void;
 	private readonly models: MutableModels;
 	private readonly credentials: RuntimeCredentials;
 	private readonly defaultBuiltins: ReadonlyMap<string, Provider>;
@@ -684,11 +686,13 @@ export class ModelRuntime implements Models {
 				? { ...(resolution.env ?? {}), ...(providerOptions.env ?? {}) }
 				: undefined;
 		const requestModel: TModel = resolution.auth.baseUrl ? { ...model, baseUrl: resolution.auth.baseUrl } : model;
+		this.requestGuard?.(requestModel);
 		return {
 			provider,
 			model: requestModel,
 			options: {
 				...providerOptions,
+				...(this.requestGuard ? { maxRetries: 0 } : {}),
 				apiKey: providerOptions.apiKey ?? resolution.auth.apiKey,
 				headers,
 				env,

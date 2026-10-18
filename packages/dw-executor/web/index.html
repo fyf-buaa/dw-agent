@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="color-scheme" content="light">
+	<title>dw-agent</title>
+	<link rel="stylesheet" href="/style.css">
+	<script type="module" src="/app.js"></script>
+</head>
+<body>
+	<svg class="symbols" aria-hidden="true"><defs>
+		<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+		<symbol id="i-arrow" viewBox="0 0 24 24"><path d="m6 12 6-6 6 6M12 6v13"/></symbol>
+		<symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6 7a7 7 0 0 1 12-1l2 3M4 15l2 3a7 7 0 0 0 12-1"/></symbol>
+		<symbol id="i-panel" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M14 4v16"/></symbol>
+		<symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+		<symbol id="i-play" viewBox="0 0 24 24"><path d="m9 5 10 7-10 7Z"/></symbol>
+		<symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></symbol>
+		<symbol id="i-link" viewBox="0 0 24 24"><path d="m10 13 4-4M8 16l-1 1a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0M16 8l1-1a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0" transform="translate(1 0) scale(.9)"/></symbol>
+		<symbol id="i-chat" viewBox="0 0 24 24"><path d="M20 15a3 3 0 0 1-3 3H8l-5 3V6a3 3 0 0 1 3-3h11a3 3 0 0 1 3 3Z"/><path d="M7 8h9M7 12h6"/></symbol>
+		<symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7M14 10v7"/></symbol>
+	</defs></svg>
+	<div class="workspace" id="workspace">
+		<aside class="sidebar">
+			<div class="brand"><span class="brand-mark">dw</span><strong>dw-agent</strong><span class="version">01</span></div>
+			<button class="primary new-session" id="new-session"><svg><use href="#i-plus"/></svg>新建会话</button>
+			<div class="search"><svg><use href="#i-search"/></svg><input id="search" type="search" placeholder="搜索会话" aria-label="搜索会话"></div>
+			<div class="section-label"><span>会话</span><span id="session-count">0</span></div>
+			<nav id="sessions" class="sessions" aria-label="会话列表"></nav>
+			<a href="/personas" id="settings-entry" class="settings-entry" aria-label="配置中心"><svg><use href="#i-panel"/></svg><span>配置中心</span></a>
+			<div class="sidebar-bottom"><button id="connection" class="connection"><span class="status-dot" id="connection-dot"></span><span id="connection-label">未连接</span><svg><use href="#i-link"/></svg></button><button class="icon-button" id="refresh" title="刷新会话" aria-label="刷新会话"><svg><use href="#i-refresh"/></svg></button></div>
+		</aside>
+		<main class="main" id="session-page">
+			<header class="toolbar"><div class="heading"><h1 id="session-title">工作台</h1><div id="session-path" class="path">—</div></div><div class="toolbar-actions"><button id="rename-session" class="text-button" disabled>重命名</button><button class="icon-button" id="toggle-panel" title="执行详情" aria-label="执行详情" aria-controls="inspector" aria-expanded="true"><svg><use href="#i-panel"/></svg></button></div></header>
+			<div class="notice" id="notice" role="status" hidden><span id="notice-text"></span><button id="retry" hidden>重新连接</button><button id="dismiss-notice" aria-label="关闭通知">×</button></div>
+			<div class="conversation" id="conversation" aria-label="对话记录" aria-live="polite"><div class="empty" id="empty"><span class="empty-mark"><svg><use href="#i-chat"/></svg></span><h2>开始一个会话</h2><button class="text-button" id="empty-new">新建会话 <span>↗</span></button></div><div id="messages" class="messages"></div></div>
+			<div class="composer-area"><div class="run-bar"><span class="run-state" id="run-state"><span class="status-dot"></span>就绪</span><div class="run-controls"><button id="cancel" class="text-button danger" hidden><svg><use href="#i-stop"/></svg>取消回复</button></div></div><form id="composer" class="composer"><div class="submission-kind"><label for="submission-kind">本次提交</label><select id="submission-kind"><option value="chat">对话 · 只回复</option><option value="task">任务 · 执行工具</option></select></div><textarea id="input" rows="2" maxlength="65536" placeholder="输入消息…" aria-label="消息或任务内容" required></textarea><div class="composer-footer"><span id="composer-context">选择或新建会话</span><button type="submit" class="send" id="send" title="发送" aria-label="发送"><svg><use href="#i-arrow"/></svg></button></div></form></div>
+		</main>
+		<aside class="inspector" id="inspector" aria-label="执行与表达详情"><div class="inspector-heading"><h2>执行详情</h2><span id="inspector-status" class="badge">空闲</span></div><div class="metrics"><div><span>模型调用</span><strong id="calls">—</strong></div><div><span>输入 / 输出 token</span><strong id="tokens">—</strong></div></div><div class="inspector-tabs" role="tablist" aria-label="详情分类"><button id="tab-execution" role="tab" aria-controls="execution-panel" aria-selected="true" tabindex="0">任务</button><button id="tab-expressions" role="tab" aria-controls="expressions-panel" aria-selected="false" tabindex="-1">表达 <span id="expression-count">0</span></button></div><div id="execution-panel" class="inspector-content" role="tabpanel" aria-labelledby="tab-execution"><section><div class="section-label">独立任务<span id="task-count">0</span></div><div id="tasks" aria-live="polite"></div></section><section><div class="section-label">待审批<span id="approval-count">0</span></div><div id="approvals" aria-live="polite"></div></section><section><div class="section-label">工具<span id="tool-count">0</span></div><div id="tools" class="tools"></div></section><section><div class="section-label">事件<span id="event-count">0</span></div><ol id="events" class="events"></ol></section></div><div id="expressions-panel" class="inspector-content" role="tabpanel" aria-labelledby="tab-expressions" hidden><div id="expressions"></div></div><dl class="session-meta"><div><dt>模型配置</dt><dd id="current-model">—</dd></div><div><dt>人格</dt><dd id="persona">—</dd></div><div><dt>会话 ID</dt><dd id="session-id" title="">—</dd></div><div><dt>序号</dt><dd id="sequence">—</dd></div></dl></aside>
+		<main id="settings-shell" class="main settings-shell" aria-label="配置中心" hidden>
+			<header class="settings-header"><div class="settings-header-title"><strong>配置中心</strong><a href="/" id="settings-back" class="text-button">← 返回工作台</a></div><nav class="settings-tabs" aria-label="配置分类"><a href="/personas" id="persona-settings">角色档案</a><a href="/companion" id="companion-settings">记忆与关系</a><a href="/life" id="life-settings">生活任务</a><a href="/models" id="model-settings">模型与分工</a><a href="/admin" id="admin-settings" hidden>管理</a></nav></header>
+			<details id="settings-scope-details" class="settings-scope-panel" open><summary id="settings-scope-summary">当前范围：default × local · 点击切换</summary>
+			<form id="settings-scope-form" class="settings-scope"><fieldset id="settings-scope-fields"><label>当前人格<select id="settings-persona" required><option value="default">default</option></select></label><label>当前用户<input id="settings-user" value="local" pattern="[A-Za-z0-9_-]{1,100}" maxlength="100" autocomplete="off" required></label><button type="submit" class="primary">切换范围</button></fieldset><p id="settings-scope-note" class="field-note">角色档案按人格保存；关系、生活及后台模型按人格 × 用户保存。</p></form>
+			</details>
+		<section id="models-page" class="main model-page" aria-labelledby="models-title" hidden>
+		<header class="model-page-heading"><div><h1 id="models-title" tabindex="-1">模型与分工</h1><p class="persona-description">模型配置：聊天、Agent、生活独立用途；供应商凭据全局共享，后台任务覆盖按人格与用户保存。</p></div><div class="model-heading-actions"><button type="button" id="model-task-refresh" class="text-button">刷新分工</button></div></header>
+		<div class="models-content companion-content">
+		<section class="companion-card settings-model-overview" aria-labelledby="model-overview-title"><h2 id="model-overview-title">当前生效的模型分工</h2><p id="model-primary-summary" class="field-note">连接后读取已保存的模型配置。</p><p class="field-note">下表只显示已保存配置，不把未保存的选择当成已生效。任务创建时冻结所用配置，修改不切换正在执行的任务。</p><table class="model-assignment-table"><thead><tr><th>任务</th><th>实际模型</th><th>运行状态</th><th>思考与计费</th></tr></thead><tbody id="model-task-overview"></tbody></table></section>
+		<section class="companion-card" aria-labelledby="model-task-title"><h2 id="model-task-title">后台任务模型 · 当前范围</h2><p class="field-note">日程、日记及细化可分别覆盖主模型；日记正文、修正和衍生素材使用同一日记模型。后台采用关闭思考或模型最低强度，不继承主模型的思考等级，调用独立计费。</p><p id="model-task-disabled" class="companion-warning" hidden></p><p id="model-task-status" class="persona-save-status" role="status"></p><p id="model-task-error" class="form-error" role="alert" hidden></p><form id="model-tasks-form"><fieldset id="model-task-fields" disabled><div id="model-task-routes"></div></fieldset><div class="companion-form-actions"><span id="model-task-revision" class="field-note">未载入</span><div class="persona-actions"><button id="model-task-discard" type="button" class="text-button" disabled>放弃模型草稿并重载</button><button id="model-task-save" type="submit" class="primary" disabled>保存后台模型分工</button></div></div></form></section>
+		<details class="companion-card primary-model-settings" open><summary>模型配置、供应商与凭据 · 全局</summary><p class="field-note">聊天、Agent 与生活可选择独立用途和输出预算，当前执行中的任务不会被切换。API Key 按供应商保存；各用途复用对应供应商凭据。密钥离开本页即清空，不保存在草稿中。</p><form id="models-form" class="model-form">
+		<div class="primary-model-heading"><p id="model-current" class="model-current">—</p><div class="model-heading-actions"><button type="button" id="model-custom-new" class="text-button">添加自定义模型</button><button type="button" id="model-refresh" class="icon-button" aria-label="刷新主模型目录" title="刷新主模型目录"><svg><use href="#i-refresh"/></svg></button></div></div>
+		<div class="model-layout"><section class="model-browser" aria-label="模型目录"><label class="model-label" for="model-provider">供应商</label><select id="model-provider" aria-label="供应商"></select><div class="search model-search"><svg><use href="#i-search"/></svg><input id="model-search" type="search" placeholder="搜索模型" aria-label="搜索模型"></div><div class="section-label"><span>模型</span><span id="model-count">0</span></div><div id="model-list" class="model-list" role="group" aria-label="模型列表"></div></section>
+		<section class="model-detail" aria-label="所选模型">
+			<div><span class="model-label">所选模型</span><h3 id="model-name">—</h3><p id="model-id" class="model-id">—</p><div id="model-capabilities" class="model-capabilities"></div></div>
+			<dl class="model-limits"><div><dt>上下文窗口</dt><dd id="model-context">—</dd></div><div><dt>最大输出</dt><dd id="model-output">—</dd></div></dl>
+			<div class="model-thinking"><label class="model-label" for="model-thinking">思考强度</label><select id="model-thinking" disabled></select><p id="model-thinking-note" class="field-note"></p></div>
+			<div class="credential-heading"><span class="model-label">凭据</span><span id="model-auth-status" class="badge">—</span></div>
+			<label class="model-label" for="model-key">API Key</label><input id="model-key" type="password" autocomplete="off" maxlength="8192" placeholder="留空保留现有凭据"><p id="model-auth-note" class="field-note"></p>
+			<section class="model-test" aria-label="模型可用性测试"><div class="credential-heading"><span class="model-label">可用性测试</span><div class="model-heading-actions"><button type="button" id="model-test-cancel" class="text-button" hidden>取消</button><button type="button" id="model-test" class="text-button" disabled>测试所选模型</button></div></div><p class="field-note">发送一次短文本请求，会消耗推理额度；不写入会话。使用已保存的模型定义，输入的新 Key 仅用于本次测试。</p><p id="model-test-result" class="model-test-result" role="status" hidden></p></section>
+			<p id="model-save-error" class="form-error" role="alert" hidden></p><p id="model-save-status" class="model-save-status" role="status" hidden></p>
+		</section></div>
+		<div class="model-footer"><span>模型配置：新回复或新任务使用已保存设置，已有任务保留快照</span><div class="model-heading-actions"><button type="button" id="model-custom-edit" class="text-button" hidden>编辑 / 添加模型</button><button type="submit" id="model-save" class="primary" disabled>保存用途模型与凭据</button></div></div>
+		</form></details></div></section>
+		<section id="personas-page" class="main persona-page" aria-labelledby="personas-title" hidden>
+			<header class="persona-page-heading"><div><h1 id="personas-title" tabindex="-1">角色档案</h1><p class="persona-description">身份、作息与记忆开关按人格保存。聊天只用于新会话；后台生活使用最新保存的角色卡。</p></div><div class="persona-actions"><button type="button" id="persona-new" class="text-button" disabled><svg><use href="#i-plus"/></svg>新建人格</button><button type="button" id="persona-refresh" class="icon-button" aria-label="刷新人格目录" title="刷新人格目录"><svg><use href="#i-refresh"/></svg></button></div></header>
+			<p id="persona-readonly" class="persona-readonly" role="status" hidden>当前使用自定义人格提供器，不支持在此管理。仍可在新建会话时手动填写人格 ID。</p>
+			<form id="persona-form" class="persona-form">
+				<div class="persona-layout">
+					<section class="persona-browser" aria-label="人格目录">
+						<div class="search persona-search"><svg><use href="#i-search"/></svg><input id="persona-search" type="search" placeholder="搜索 ID 或提示预览" aria-label="搜索人格"></div>
+						<div class="section-label"><span>人格</span><span id="persona-count">0</span></div>
+						<div id="persona-list" class="persona-list" role="group" aria-label="人格列表"><p class="muted">连接后加载人格目录</p></div>
+						<section id="persona-file-errors" class="persona-file-errors" aria-labelledby="persona-errors-title" hidden><h2 id="persona-errors-title">无法读取的人格文件</h2><p class="field-note">以下文件未被覆盖，请修复文件后刷新。</p><ul id="persona-errors"></ul></section>
+					</section>
+					<section class="persona-editor" aria-label="人格编辑器">
+						<div class="persona-editor-heading"><h2 id="persona-editor-title">选择或新建人格</h2><span id="persona-builtin" class="badge" hidden>内置 default</span></div>
+						<div class="persona-metadata">
+							<div><label class="persona-label" for="persona-id">人格 ID</label><input id="persona-id" pattern="[A-Za-z0-9_-]{1,100}" maxlength="100" autocomplete="off" placeholder="my-persona" aria-describedby="persona-id-note" required disabled><p id="persona-id-note" class="field-note">1–100 个字母、数字、下划线或短横线；保存后不可改名。</p></div>
+							<div><label class="persona-label" for="persona-revision">版本（自动生成）</label><input id="persona-revision" readonly placeholder="保存后自动生成" disabled></div>
+						</div>
+						<div class="persona-prompt-heading"><label class="persona-label" for="persona-prompt">系统提示</label><span id="persona-character-count">0 / 65536 字符</span></div>
+						<textarea id="persona-prompt" rows="16" maxlength="65536" placeholder="输入此人格的系统提示…" aria-describedby="persona-prompt-note persona-character-count" required disabled></textarea>
+						<p id="persona-prompt-note" class="field-note">最多 65536 个字符，不能全为空白。保存不调用模型，也不会修改已有会话。</p>
+						<fieldset id="persona-roleplay" class="roleplay-fields" disabled>
+							<legend>角色卡与长期记忆</legend>
+							<label class="check-label"><input id="roleplay-enabled" type="checkbox">启用角色扮演（关系、记忆与后台生活的前提）</label>
+							<p id="persona-roleplay-note" class="config-dependency-note">角色扮演是关系、记忆和后台生活的前提；系统提示始终生效。关闭不删除已有数据。修改后保存，聊天需新建会话；后台按最新保存配置运行。</p>
+							<p class="field-note">角色背景、作息和活动均为虚构配置，不是现实观察；关系与记忆按人格 ID 和用户 ID 独立共享。未启用时可预先编辑，下级参数不会被清空。</p>
+							<div class="roleplay-grid">
+								<label>角色名称<input id="roleplay-name" maxlength="100"></label>
+								<label>时区<input id="roleplay-timezone" maxlength="100" placeholder="Asia/Shanghai" required></label>
+								<label>起床时间<input id="roleplay-wake_time" type="time" required></label>
+								<label>入睡时间<input id="roleplay-sleep_time" type="time" required></label>
+							</div>
+							<details class="config-subgroup" open><summary>身份、性格与表达</summary>
+							<label>身份<textarea id="roleplay-identity" rows="3" maxlength="2000"></textarea></label>
+							<label>世界设定<textarea id="roleplay-world" rows="3" maxlength="4000"></textarea></label>
+							<label>背景经历<textarea id="roleplay-backstory" rows="3" maxlength="4000"></textarea></label>
+							<label>性格<textarea id="roleplay-traits" rows="3" maxlength="2000"></textarea></label>
+							<label>表达风格<textarea id="roleplay-speech_style" rows="3" maxlength="2000"></textarea></label>
+							<label>角色边界<textarea id="roleplay-boundaries" rows="3" maxlength="2000"></textarea></label>
+							</details>
+							<details class="config-subgroup"><summary>固定作息、重要日期与角色目标</summary>
+							<div id="roleplay-routine"></div>
+							<p class="field-note">逐条选择开始与结束时间，填写活动和可选地点；最多 24 项。支持跨午夜，时间段不能重叠；起床与入睡相同表示不设睡眠周期。</p>
+							<div id="roleplay-important_dates"></div>
+							<p class="field-note">选择月份和日期，填写生日或纪念日名称；每年重复，支持 2 月 29 日，最多 32 项。</p>
+							<div id="roleplay-goals"></div>
+							<p class="field-note">填写目标内容并选择状态，最多 24 项。目标 ID 自动生成；已有 ID 保留，修改时不能与其他目标重复。</p>
+							</details>
+							<details class="config-subgroup" open><summary>长期记忆 · 主回复提炼与本地检索</summary>
+							<label class="check-label"><input id="roleplay-memory_enabled" type="checkbox">启用长期记忆（关闭不删除已有记忆）</label>
+							<label>记忆上下文预算（字符）<input id="roleplay-memory_budget_chars" type="number" min="4096" max="16384" step="1" required></label>
+							<p id="persona-memory-note" class="config-dependency-note">记忆提炼随主回复完成，不设置独立模型；召回使用本地检索，不产生额外模型调用。关闭后不删除已有记忆，仍可在“记忆与关系”中管理。</p></details>
+						</fieldset>
+					</section>
+				</div>
+				<footer class="persona-footer"><div class="persona-feedback"><p id="persona-save-error" class="form-error" role="alert" hidden></p><p id="persona-save-status" class="persona-save-status" role="status">选择人格后可查看或编辑系统提示。</p></div><div class="persona-actions"><button type="button" id="persona-use" class="text-button" disabled>用于新会话</button><button type="submit" id="persona-save" class="primary" disabled>保存人格</button></div></footer>
+			</form>
+		</section>
+		<section id="companion-page" class="main companion-page" aria-labelledby="companion-title" hidden>
+			<header class="persona-page-heading"><div><h1 id="companion-title" tabindex="-1">记忆与关系</h1><p class="persona-description">管理上方人格 × 用户的关系和记忆，即时生效；此页不调用模型。</p></div><div class="persona-actions"><button type="button" id="companion-refresh" class="text-button">刷新当前范围</button><button type="button" id="companion-use" class="text-button" disabled>用于新会话</button></div></header>
+			<div class="companion-content">
+				<p id="companion-status" class="persona-save-status" role="status"></p><p id="companion-error" class="form-error" role="alert" hidden></p>
+				<p id="companion-disabled" class="companion-warning" hidden>此人格尚未启用角色扮演。请前往 <a href="/personas">人格设定</a> 配置，保存后用于新会话。已有会话仍保留原角色卡快照。</p>
+				<section class="companion-card" aria-labelledby="companion-projection-title"><h2 id="companion-projection-title">虚构角色状态</h2><p class="field-note">时间由配置时区投影；精力、地点与日程仅为虚构角色状态，不代表现实活动、健康或位置。</p><dl id="companion-projection" class="companion-projection"></dl><h3>重要日期与角色目标</h3><ul id="companion-dates"></ul><ul id="companion-goals"></ul></section>
+				<section class="companion-card" aria-labelledby="companion-state-title"><h2 id="companion-state-title">此用户的关系状态</h2><form id="companion-state-form">
+					<fieldset id="companion-state-fields" disabled><div class="roleplay-grid"><label>用户名称<input id="companion-user-name" maxlength="100"></label><label>角色对用户的称呼<input id="companion-address" maxlength="100"></label></div><label>关系背景<textarea id="companion-background" rows="4" maxlength="4000"></textarea></label>
+					<div class="roleplay-grid"><label>亲密分 affinity（-100～100）<input id="companion-affinity" type="number" min="-100" max="100" step="1" required></label><label>情绪 valence（-1～1）<input id="companion-valence" type="number" min="-1" max="1" step="any" required></label><label>唤醒 arousal（0～1）<input id="companion-arousal" type="number" min="0" max="1" step="any" required></label></div>
+					<div id="companion-user-dates"></div><p class="field-note">选择月份、日期并填写名称，最多 32 项。保存使用当前版本进行并发检查，不覆盖其他修改。</p></fieldset>
+					<div class="companion-form-actions"><span id="companion-state-revision" class="field-note">未载入</span><button id="companion-state-save" type="submit" class="primary" disabled>保存关系状态</button></div>
+				</form><details><summary>关系分数账本</summary><ol id="companion-ledger"></ol></details></section>
+				<section class="companion-card" aria-labelledby="memory-title"><h2 id="memory-title">长期记忆</h2><p class="field-note">pending 为待审核提议，不是已确认事实。核心固定记录会优先进入上下文；动态召回仅检索当前查询相关内容。归档不等于遗忘。</p><p id="memory-counts"></p>
+					<form id="memory-filter-form" class="companion-filters"><label>状态<select id="memory-status"><option value="active">生效 active</option><option value="pending">待审核 pending</option><option value="archived">归档 archived</option><option value="superseded">已替代 superseded</option><option value="forgotten">已遗忘 forgotten</option><option value="all">全部</option></select></label><label>类型<select id="memory-kind"><option value="">全部</option><option value="episode">情景 episode</option><option value="fact">断言 fact</option><option value="event">事件 event</option><option value="commitment">承诺 commitment</option><option value="reflection">反思 reflection</option></select></label><label>搜索<input id="memory-query" type="search" maxlength="1000"></label><button id="memory-search" class="text-button" type="submit" disabled>搜索 / 筛选</button><button id="memory-new" type="button" class="text-button" disabled>手动新增</button></form>
+					<div id="memory-list" class="memory-list"></div><button id="memory-more" type="button" class="text-button" hidden>加载更多</button>
+				</section>
+				<section class="companion-card" aria-labelledby="recall-title"><h2 id="recall-title">只读召回预览</h2><p class="field-note">显示固定核心与动态候选及评分，不调用模型、不增加召回次数；实际上下文还受角色卡预算限制。</p><form id="recall-form" class="companion-filters"><label>当前查询<input id="recall-query" maxlength="2000" required></label><button id="recall-preview" class="text-button" type="submit" disabled>预览召回</button></form><h3>固定核心 core</h3><div id="recall-core"></div><h3>动态候选 dynamic</h3><div id="recall-dynamic"></div></section>
+			</div>
+		</section>
+		<section id="life-page" class="main life-page" aria-labelledby="life-title" hidden>
+			<header class="persona-page-heading"><div><h1 id="life-title" tabindex="-1">生活任务</h1><p class="persona-description">管理上方人格 × 用户的自动任务、状态模拟与生成记录；模型在“模型与分工”统一设置。</p></div><div class="persona-actions"><button id="life-refresh" class="text-button" type="button">只读刷新</button><button type="button" id="life-use" class="text-button" disabled>用于新会话</button></div></header>
+			<div class="companion-content life-content">
+				<details class="config-subgroup"><summary>虚构内容、调用费用与生效说明</summary>
+				<p class="companion-warning">这里全部是角色的虚构生活，包括身体、周期、梦境和天气；不是现实健康、医疗建议、位置或真实天气观察。基础周期按配置默认启用，不按角色性别推断；六阶段策略是可选的虚构设定。</p>
+				<p class="companion-warning">日程、细化与日记会独立调用后台模型并消耗额度，不计入聊天的单次调用；启用后可按保存的时间自动生成。生成按钮也会消耗额度，可能有一次修正及素材提取调用。保存设置、数学推进与手动状态不调用模型；不会主动发消息。</p>
+				</details>
+				<p id="life-status" class="persona-save-status" role="status"></p><p id="life-error" class="form-error" role="alert" hidden></p>
+				<p id="life-disabled" class="companion-warning" hidden>此人格未启用角色扮演，后台不会生成生活。请在 <a href="/personas">人格设定</a> 启用角色扮演。</p>
+				<section class="companion-card" aria-labelledby="life-config-title"><h2 id="life-config-title">自动任务与状态设置</h2><p class="field-note">此处只设置任务开关与行为，保存后即时作用于当前范围，不改写角色卡。“自动”开关不阻止手动生成日程或日记；关闭状态模拟不等于关闭日程与日记。</p><div id="life-model-summary" class="settings-model-summary"></div><a href="/models" class="text-button" data-settings-link>查看 / 调整模型分工 →</a><form id="life-config-form"><fieldset id="life-config-fields" disabled><div id="life-config-groups"></div></fieldset><div class="companion-form-actions life-save-bar"><span id="life-config-revision" class="field-note">未载入</span><div class="persona-actions"><button id="life-config-discard" type="button" class="text-button" disabled>放弃设置草稿并重载</button><button id="life-config-save" type="submit" class="primary" disabled>保存生活设置</button></div></div></form></section>
+				<section class="companion-card" aria-labelledby="life-state-title"><div class="life-card-heading"><h2 id="life-state-title">当前虚构状态</h2><button id="life-advance" type="button" class="text-button" disabled>数学推进（不调用模型）</button></div><dl id="life-projection" class="companion-projection"></dl><h3>正在持续的状态</h3><div id="life-conditions"></div>
+					<form id="life-condition-form" class="companion-filters"><label>手动虚构状态<input id="life-condition-label" maxlength="80" placeholder="例如：读书后的平静" required disabled></label><label>持续小时（留空使用服务默认）<input id="life-condition-hours" type="number" min="1" max="72" step="1" disabled></label><button id="life-condition-add" type="submit" class="text-button" disabled>添加状态（不调用模型）</button></form><details><summary>虚构状态演化历史</summary><ol id="life-history"></ol></details>
+				</section>
+				<section class="companion-card" aria-labelledby="life-plan-title"><div class="life-card-heading"><h2 id="life-plan-title">今天的虚构日程与细节</h2><div class="persona-actions"><button id="life-plan-generate" type="button" class="text-button" disabled>生成今日日程（模型）</button><button id="life-plan-regenerate" type="button" class="text-button" disabled>强制重生成日程</button><button id="life-detail-generate" type="button" class="text-button" disabled>细化当前日程段（模型）</button></div></div><p class="field-note">日程只是计划，不等于已发生事件；细节标记为模拟，不是现实活动。</p><div id="life-plan"></div><div id="life-details"></div></section>
+				<section class="companion-card" aria-labelledby="life-diary-title"><div class="life-card-heading"><h2 id="life-diary-title">角色日记</h2><div class="persona-actions"><button id="life-diary-generate" type="button" class="text-button" disabled>生成今日日记（模型）</button><button id="life-diary-regenerate" type="button" class="text-button" disabled>强制重生成今日日记</button><button id="life-diary-block" type="button" class="text-button danger" disabled>删除 / 阻止今日日记</button></div></div><p id="life-diary-status" class="field-note"></p><p class="field-note">日记保留证据等级：confirmed 仅为确有来源的对话/手动记录，planned 是计划，simulated 是虚构细节，state 是模拟状态。evidence 来源表示仅据证据整理的降级内容，不冒充模型成功。删除保留版本墓碑以阻止后台重建；仅可显式强制重生成今天，不能补造过去日记。</p><div class="life-diary-layout"><div><div id="life-diaries" class="life-diaries" aria-label="日记日期列表"></div><button id="life-diary-more" type="button" class="text-button" hidden>加载更多日期</button></div><article id="life-diary" class="life-diary" aria-label="所选日记" aria-live="polite"><p class="muted">选择日期查看日记与来源。</p></article></div></section>
+				<section class="companion-card" aria-labelledby="life-jobs-title"><h2 id="life-jobs-title">独立后台任务与实际调用</h2><p class="field-note">显示真实记录的模型调用与 token；失败、取消和降级警告不会被显示成生成成功。</p><div id="life-jobs"></div></section>
+			</div>
+		</section>
+		<section id="admin-page" class="main settings-page" aria-label="工作区、权限与集成管理" hidden></section>
+		</main>
+	</div>
+	<dialog id="auth-dialog"><form id="auth-form" class="dialog-form"><div class="dialog-heading"><h2>连接执行器</h2><button type="button" class="dialog-close" id="close-auth" aria-label="关闭">×</button></div><label>访问令牌<input id="token" type="password" autocomplete="off" placeholder="Access token" required></label><p class="field-note">使用服务启动时显示的 access-token 文件。</p><p id="auth-error" class="form-error" role="alert" hidden></p><div class="dialog-actions"><button type="button" id="logout" class="text-button danger" hidden>断开连接</button><button type="submit" class="primary" id="auth-submit">连接</button></div></form></dialog>
+	<dialog id="new-dialog" aria-labelledby="new-title"><form id="new-form" class="dialog-form"><div class="dialog-heading"><h2 id="new-title">新建会话</h2><button type="button" id="close-new" class="dialog-close" aria-label="关闭">×</button></div><label>人格<input id="new-persona" value="default" pattern="[A-Za-z0-9_-]{1,100}" list="persona-options" required><datalist id="persona-options"></datalist></label><label>用户 ID<input id="new-user" value="local" pattern="[A-Za-z0-9_-]{1,100}" maxlength="100" autocomplete="off" required></label><p class="field-note">同一人格与用户 ID 跨会话共享长期记忆和关系；不同用户 ID 相互隔离。</p><label>已注册工作区<select id="new-workspace" required></select></label><label>执行配置<select id="new-execution-profile" required></select></label><label>模型配置<select id="new-model-profile" required></select></label><p id="new-error" class="form-error" role="alert" hidden></p><div class="dialog-actions"><button type="submit" class="primary" id="create">创建</button></div></form></dialog>
+	<dialog id="delete-dialog" class="delete-dialog" aria-labelledby="delete-title" aria-describedby="delete-warning delete-retained"><form id="delete-form" class="dialog-form">
+		<div class="dialog-heading"><h2 id="delete-title">永久删除此会话？</h2><button type="button" id="close-delete" class="dialog-close" aria-label="关闭删除确认">×</button></div>
+		<p id="delete-preview" class="delete-preview"></p><p id="delete-session-id" class="field-note"></p>
+		<p id="delete-warning" class="companion-warning">此操作会永久删除这个会话的全部对话历史、回复、工具与执行记录，无法撤销。</p>
+		<p id="delete-paused" class="companion-warning" hidden>此会话有未结束的独立任务，请先取消任务或等待结束后重新确认。</p>
+		<p id="delete-retained" class="field-note">不会删除共享的长期记忆、关系、人格与生活设置、日记；自动生活任务仍会继续运行。</p>
+		<p id="delete-busy" class="form-error" role="alert" hidden>会话仍有未结束的回复或任务，无法删除。请取消本次删除，显式取消任务或等待结束后重新确认。</p>
+		<p id="delete-error" class="form-error" role="alert" hidden></p>
+		<div class="dialog-actions"><button type="button" id="delete-cancel" class="text-button" autofocus>取消</button><button type="submit" id="delete-confirm" class="primary destructive">永久删除</button></div>
+	</form></dialog>
+	<dialog id="rename-dialog" aria-labelledby="rename-title"><form id="rename-form" class="dialog-form"><div class="dialog-heading"><h2 id="rename-title">重命名会话</h2><button type="button" id="close-rename" class="dialog-close" aria-label="关闭">×</button></div><label>会话名称<input id="rename-value" maxlength="200" required></label><p id="rename-error" class="form-error" role="alert" hidden></p><div class="dialog-actions"><button type="submit" id="rename-save" class="primary">保存名称</button></div></form></dialog>
+	<dialog id="custom-dialog" class="custom-dialog" aria-labelledby="custom-title"><form id="custom-form" class="dialog-form">
+		<div class="dialog-heading"><h2 id="custom-title">自定义供应商</h2><button type="button" id="close-custom" class="dialog-close" aria-label="关闭自定义供应商">×</button></div>
+		<label>供应商 ID<input id="custom-provider" placeholder="my-provider" pattern="[A-Za-z0-9_-]{1,100}" maxlength="100" autocomplete="off" required></label>
+		<label>API Base URL<input id="custom-url" type="url" placeholder="http://127.0.0.1:8000/v1" maxlength="2048" autocomplete="off" required></label>
+		<label>API Key<input id="custom-key" type="password" placeholder="留空保留现有凭据" maxlength="8192" autocomplete="off"></label>
+		<label>模型名称<input id="custom-model" placeholder="接口使用的 model ID" maxlength="500" autocomplete="off" required></label>
+		<fieldset class="capability-options"><legend>模型能力</legend><div class="capability-choices"><span class="badge">文本输入（必选）</span><label><input id="custom-image" type="checkbox">图像输入</label><label><input id="custom-reasoning" type="checkbox">推理 / 思考</label></div></fieldset>
+		<label>思考强度<select id="custom-thinking"></select></label>
+		<details class="custom-limits"><summary>模型限额</summary><div class="custom-limits-fields"><label>上下文窗口<input id="custom-context" type="number" min="4096" max="10000000" value="131072" required></label><label>最大输出<input id="custom-output" type="number" min="1" value="8192" required></label></div></details>
+		<p class="field-note custom-note">OpenAI Chat Completions · 同一供应商可添加多个模型</p>
+		<p id="custom-error" class="form-error" role="alert" hidden></p>
+		<div class="dialog-actions"><button type="submit" id="custom-save" class="primary">保存并使用</button></div>
+	</form></dialog>
+	<dialog id="memory-dialog" class="memory-dialog" aria-labelledby="memory-dialog-title"><form id="memory-form" class="dialog-form">
+		<div class="dialog-heading"><h2 id="memory-dialog-title">手动新增记忆</h2><button type="button" id="memory-close" class="dialog-close" aria-label="关闭记忆编辑器">×</button></div>
+		<fieldset id="memory-create-fields"><div class="roleplay-grid"><label>类型<select id="memory-create-kind"><option value="fact">断言 fact</option><option value="event">事件 event</option><option value="commitment">承诺 commitment</option><option value="reflection">反思 reflection</option></select></label><label>领域<select id="memory-create-domain"><option value="user">用户 user</option><option value="character">角色 character</option><option value="world">世界 world</option><option value="relationship">关系 relationship</option></select></label></div><label>单值属性 key（可选）<input id="memory-create-key" maxlength="200" placeholder="user.home"></label><p class="field-note">仅 fact 的非空 key 表示单值属性；新的不同值会替代同范围旧值。不确定是否单值请留空。</p><label class="check-label"><input id="memory-create-pin" type="checkbox">固定到核心（最多 8 条，另有总字符预算）</label><div class="roleplay-grid"><label>重要性（0～1）<input id="memory-create-importance" type="number" min="0" max="1" step="any" value="0.5" required></label><label>持久性<select id="memory-create-durability"><option value="short">短期 short</option><option value="normal" selected>一般 normal</option><option value="durable">长期 durable</option></select></label></div><label>到期时间（本地时间，可选）<input id="memory-create-expiry" type="datetime-local"></label></fieldset>
+		<label>内容<textarea id="memory-content" rows="7" maxlength="4000" required></textarea></label><p id="memory-dialog-note" class="field-note">手动新增会作为用户确认的记录保存。请勿保存密钥、密码或凭据。</p><p id="memory-dialog-error" class="form-error" role="alert" hidden></p><div class="dialog-actions"><button id="memory-submit" type="submit" class="primary">保存记忆</button></div>
+	</form></dialog>
+</body>
+</html>

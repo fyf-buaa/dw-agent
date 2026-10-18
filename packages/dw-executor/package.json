@@ -1,0 +1,27 @@
+{
+	"name": "@earendil-works/dw-executor",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Pi-based LLM executor for digital-wifa",
+	"exports": { ".": "./src/index.ts", "./protocol": "./src/protocol.ts" },
+	"scripts": {
+		"start": "node --import ../coding-agent/src/experimental/source-resolver.ts src/cli.ts",
+		"test": "vitest run",
+		"schema": "node --import ../coding-agent/src/experimental/source-resolver.ts scripts/export-schema.ts"
+	},
+	"dependencies": {
+		"@earendil-works/pi-agent-core": "1.3.0",
+		"@earendil-works/pi-ai": "1.3.0",
+		"@earendil-works/pi-coding-agent": "1.3.0",
+		"proper-lockfile": "4.1.2",
+		"typebox": "1.3.27",
+		"ws": "8.21.0"
+	},
+	"devDependencies": {
+		"@types/proper-lockfile": "4.1.4",
+		"@types/ws": "8.18.2",
+		"vitest": "4.1.11"
+	},
+	"engines": { "node": ">=22.19.0" }
+}

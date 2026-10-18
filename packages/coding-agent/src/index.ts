@@ -50,6 +50,7 @@ export {
 	shouldCompact,
 } from "./core/compaction/index.ts";
 export { createEventBus, type EventBus, type EventBusController } from "./core/event-bus.ts";
+export { ExecutionPolicy } from "./core/execution-policy.ts";
 // Extension system
 export type {
 	AfterProviderResponseEvent,

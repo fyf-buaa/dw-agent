@@ -1,4 +1,13 @@
 node_modules
+
+# Local executor data, directory locks, and verification artifacts
+.dw-agent/
+.dw-agent.lock/
+.local/
+
+# Godot editor-generated imports and caches
+packages/dw-executor/examples/godot/.godot/
+
 dist/
 .artifacts/
 *.log

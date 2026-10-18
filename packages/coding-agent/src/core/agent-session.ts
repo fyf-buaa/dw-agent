@@ -78,6 +78,7 @@ import {
 	shouldCompact,
 } from "./compaction/index.ts";
 import { DEFAULT_THINKING_LEVEL, THINKING_LEVEL_OPTIONS } from "./defaults.ts";
+import type { ExecutionPolicy } from "./execution-policy.ts";
 import { exportSessionToHtml, type ToolHtmlRenderer } from "./export-html/index.ts";
 import { createToolHtmlRenderer } from "./export-html/tool-renderer.ts";
 import {
@@ -250,6 +251,7 @@ function withoutDeletedHeaders(headers: ProviderHeaders | undefined): Record<str
 }
 
 export interface AgentSessionConfig {
+	executionPolicy?: ExecutionPolicy;
 	agent: Agent;
 	sessionManager: SessionManager;
 	settingsManager: SettingsManager;
@@ -377,6 +379,7 @@ function estimateMessagesTokens(messages: AgentMessage[]): number {
 // ============================================================================
 
 export class AgentSession {
+	readonly executionPolicy: ExecutionPolicy | undefined;
 	readonly agent: Agent;
 	readonly sessionManager: SessionManager;
 	readonly settingsManager: SettingsManager;
@@ -484,6 +487,7 @@ export class AgentSession {
 	private _runSystemPromptOptions?: NormalizedBuildSystemPromptOptions;
 
 	constructor(config: AgentSessionConfig) {
+		this.executionPolicy = config.executionPolicy;
 		this.agent = config.agent;
 		this.sessionManager = config.sessionManager;
 		this.settingsManager = config.settingsManager;
@@ -651,7 +655,7 @@ export class AgentSession {
 	 * happens here instead of in wrappers.
 	 */
 	private _installAgentToolHooks(): void {
-		this.agent.beforeToolCall = (context) => this._beforeToolCall(context);
+		this.agent.beforeToolCall = (context, signal) => this._beforeToolCall(context, undefined, signal);
 		this.agent.afterToolCall = (context) => this._afterToolCall(context);
 	}
 
@@ -659,25 +663,37 @@ export class AgentSession {
 	private async _beforeToolCall(
 		{ toolCall, args }: BeforeToolCallContext,
 		parentToolCallId?: string,
+		signal?: AbortSignal,
 	): Promise<BeforeToolCallResult | undefined> {
-		const runner = this._extensionRunner;
-		if (!runner.hasHandlers("tool_call")) {
-			return undefined;
-		}
-
+		const { name: toolName, id: toolCallId } = toolCall;
+		const event = {
+			type: "tool_call" as const,
+			toolName,
+			toolCallId,
+			...(parentToolCallId ? { parentToolCallId } : {}),
+			input: args as Record<string, unknown>,
+		};
 		try {
-			return await runner.emitToolCall({
-				type: "tool_call",
-				toolName: toolCall.name,
-				toolCallId: toolCall.id,
-				...(parentToolCallId ? { parentToolCallId } : {}),
-				input: args as Record<string, unknown>,
-			});
+			const result = this._extensionRunner.hasHandlers("tool_call")
+				? await this._extensionRunner.emitToolCall(event)
+				: undefined;
+			if (result?.block) return result;
+			// Extensions may mutate arguments. The host guard must see their final values and
+			// must not be bypassed by an extension runner reload or a nested executeTool call.
+			return (
+				(await this.executionPolicy?.authorizeToolCall?.(
+					{
+						toolName,
+						toolCallId,
+						...(parentToolCallId ? { parentToolCallId } : {}),
+						input: args as Record<string, unknown>,
+					},
+					signal,
+				)) ?? result
+			);
 		} catch (err) {
-			if (err instanceof Error) {
-				throw err;
-			}
-			throw new Error(`Extension failed, blocking execution: ${String(err)}`);
+			if (err instanceof Error) throw err;
+			throw new Error(`Tool authorization failed, blocking execution: ${String(err)}`);
 		}
 	}
 
@@ -750,7 +766,7 @@ export class AgentSession {
 					tools: this._getCallableTools(),
 					assistantMessage,
 					context: { messages: this.agent.state.messages, tools: this.agent.state.tools },
-					beforeToolCall: (context) => this._beforeToolCall(context, parentId),
+					beforeToolCall: (context, callSignal) => this._beforeToolCall(context, parentId, callSignal),
 					afterToolCall: (context) => this._afterToolCall(context, parentId),
 					signal,
 					onUpdate,
@@ -776,6 +792,7 @@ export class AgentSession {
 
 	private async _compactBeforeNextAssistantResponse(context: AgentContext): Promise<AgentContext> {
 		const projection = this.sessionManager.buildSessionProjection();
+		if (this.executionPolicy) return { ...context, messages: projection.messages };
 		// A virtual selection is checked in prepareRequest, against the model the request is routed to.
 		const model = this.model;
 		if (!model || isVirtualModel(model) || !this._exceedsCompactionThreshold(model, projection)) {
@@ -811,6 +828,9 @@ export class AgentSession {
 			};
 			let { previous, context, projection } = await prepare();
 			const model = previous?.model ?? this.agent.state.model;
+			if (this.executionPolicy?.mode === "chat" && isVirtualModel(model)) {
+				throw new Error("Virtual model routing is disabled in chat mode");
+			}
 			const thinkingLevel = previous?.thinkingLevel ?? this.agent.state.thinkingLevel;
 			if (!isVirtualModel(model)) return { ...previous, context, model, thinkingLevel };
 
@@ -888,6 +908,11 @@ export class AgentSession {
 		const previousFinishTurn = this.agent.finishTurn;
 		this.agent.finishTurn = async (turn, signal) => {
 			this._boundaryDispatchedMessages.add(turn.message);
+			if (this.executionPolicy?.finishTurn(turn.toolResults.length > 0 || this.agent.hasQueuedMessages())) {
+				this.clearQueue();
+				this.sessionManager.flush();
+				return { action: "end" };
+			}
 			const extensionContinue = await this._dispatchTurnEndBoundary(turn.message, turn.toolResults);
 			const previousDecision = await previousFinishTurn?.(turn, signal);
 			if (previousDecision?.action === "end") return previousDecision;
@@ -1082,13 +1107,17 @@ export class AgentSession {
 		this._isEmittingAgentSettled = true;
 		try {
 			const aborted = this._agentRunAbortRequested;
-			await this._extensionRunner.emit({ type: "agent_settled", aborted });
+			if (!this.executionPolicy?.stopped) await this._extensionRunner.emit({ type: "agent_settled", aborted });
 			this._emit({ type: "agent_settled", aborted });
 		} finally {
 			this._isEmittingAgentSettled = false;
 		}
 
 		const deferred = this._deferredSettledActions.splice(0);
+		if (this.executionPolicy?.stopped) {
+			this._resolveIdleWaitIfIdle();
+			return;
+		}
 		if (deferred.length > 0) {
 			try {
 				for (const action of deferred) await action();
@@ -1290,7 +1319,9 @@ export class AgentSession {
 			this._turnIndex = 0;
 			await this._extensionRunner.emit({ type: "agent_start" });
 		} else if (event.type === "agent_end") {
-			await this._extensionRunner.emit({ type: "agent_end", messages: event.messages });
+			if (!this.executionPolicy?.stopped) {
+				await this._extensionRunner.emit({ type: "agent_end", messages: event.messages });
+			}
 		} else if (event.type === "turn_start") {
 			const extensionEvent: TurnStartEvent = {
 				type: "turn_start",
@@ -1565,6 +1596,7 @@ export class AgentSession {
 	 * `codemode` or `deferred` tool.
 	 */
 	private _getCallableTools(active: ReadonlySet<string> = new Set(this.getActiveToolNames())): AgentTool[] {
+		if (this.executionPolicy?.mode === "chat") return [];
 		return [...this._toolRegistry.values()].filter((tool) => {
 			const exposure = this._getToolExposure(tool.name);
 			return exposure === "codemode" || exposure === "deferred" || (exposure === "direct" && active.has(tool.name));
@@ -1578,6 +1610,11 @@ export class AgentSession {
 	 * requests (see {@link _installHiddenDeclarationsProjection}).
 	 */
 	private _applyToolLoadout(toolNames: string[]): AgentTool[] {
+		if (this.executionPolicy?.mode === "chat") {
+			this._hiddenDeclarations = new Set();
+			this.agent.state.tools = [];
+			return [];
+		}
 		const tools = [...new Set(toolNames)].flatMap((name) => {
 			const tool = this._toolRegistry.get(name);
 			return tool && this._getToolExposure(name) !== "hidden" && this._isActivatable(name) ? [tool] : [];
@@ -1835,6 +1872,9 @@ export class AgentSession {
 	 * @param onStarted Called once the run's messages are prepared, before the first request.
 	 */
 	private async _startRun(trigger: BeforeAgentStartTrigger, onStarted?: () => void): Promise<void> {
+		if (this.executionPolicy && (!this.executionPolicy.active || this.executionPolicy.stopped)) {
+			throw new Error("Execution scope does not permit starting another run");
+		}
 		this._isAgentRunActive = true;
 		this._agentRunAbortRequested = false;
 		let messages: AgentMessage[];
@@ -1861,7 +1901,7 @@ export class AgentSession {
 		this._pendingToolNames.clear();
 		try {
 			await this.agent.prompt(messages);
-			while (!this._agentRunAbortRequested) {
+			while (!this._agentRunAbortRequested && !this.executionPolicy?.stopped) {
 				if (await this._handlePostAgentRun()) {
 					if (this._agentRunAbortRequested) break;
 					await this.agent.continue();
@@ -1941,6 +1981,7 @@ export class AgentSession {
 	}
 
 	private async _handlePostAgentRun(): Promise<boolean> {
+		if (this.executionPolicy?.stopped) return false;
 		const message = this._lastAssistantMessage;
 		const toolResults = this._lastAssistantToolResults;
 		this._lastAssistantMessage = undefined;
@@ -1981,6 +2022,7 @@ export class AgentSession {
 	}
 
 	private async _runBeforeSettleBoundary(): Promise<boolean> {
+		if (this.executionPolicy?.stopped) return false;
 		if (!this._extensionRunner.hasHandlers("agent_before_settle")) return this.agent.hasQueuedMessages();
 		this._isBeforeSettle = true;
 		this._abortDuringBeforeSettle = false;
@@ -2010,6 +2052,7 @@ export class AgentSession {
 		source: InputSource,
 		streamingBehavior?: "steer" | "followUp",
 	): Promise<{ text: string; images: ImageContent[] | undefined } | undefined> {
+		if (this.executionPolicy?.mode === "chat") return { text, images };
 		if (!this._extensionRunner.hasHandlers("input")) {
 			return { text, images };
 		}
@@ -2060,7 +2103,8 @@ export class AgentSession {
 			this._deferredSettledActions.push(async () => await this.prompt(text, options));
 			return;
 		}
-		const expandPromptTemplates = options?.expandPromptTemplates ?? true;
+		const expandPromptTemplates =
+			this.executionPolicy?.mode === "chat" ? false : (options?.expandPromptTemplates ?? true);
 		const preflightResult = options?.preflightResult;
 		// Handle extension commands first (execute immediately, even during streaming)
 		// Extension commands manage their own LLM interaction via pi.sendMessage()
@@ -2792,6 +2836,7 @@ export class AgentSession {
 	 * @param customInstructions Optional instructions for the compaction summary
 	 */
 	async compact(customInstructions?: string): Promise<CompactionResult> {
+		if (this.executionPolicy) throw new Error("Model compaction is disabled by the host execution policy");
 		await this.abort();
 		this._compactionAbortController = new AbortController();
 		this._emit({ type: "compaction_start", reason: "manual" });
@@ -2979,6 +3024,7 @@ export class AgentSession {
 		skipAbortedCheck = true,
 		toolResults: AgentMessage[] = [],
 	): Promise<boolean> {
+		if (this.executionPolicy) return false;
 		const settings = this.settingsManager.getCompactionSettings(this.model);
 		if (!settings.enabled) return false;
 

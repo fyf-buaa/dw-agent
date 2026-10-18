@@ -17,6 +17,7 @@ import {
 	closeSync,
 	createReadStream,
 	existsSync,
+	fsyncSync,
 	mkdirSync,
 	openSync,
 	readdirSync,
@@ -1135,6 +1136,28 @@ export class SessionManager {
 
 	isPersisted(): boolean {
 		return this.persist;
+	}
+
+	/** Persist setup-only sessions too and synchronize prior appends before acknowledging a host event. */
+	flush(): void {
+		if (!this.persist || !this.sessionFile) return;
+		if (!this.flushed) {
+			const fd = openSync(this.sessionFile, "wx", 0o600);
+			try {
+				for (const entry of this.fileEntries) writeFileSync(fd, `${JSON.stringify(entry)}\n`);
+				fsyncSync(fd);
+			} finally {
+				closeSync(fd);
+			}
+			this.flushed = true;
+		} else {
+			const fd = openSync(this.sessionFile, "r+");
+			try {
+				fsyncSync(fd);
+			} finally {
+				closeSync(fd);
+			}
+		}
 	}
 
 	getCwd(): string {

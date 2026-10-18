@@ -8,6 +8,7 @@ import { AgentSession } from "./agent-session.ts";
 import { formatNoModelsAvailableMessage } from "./auth-guidance.ts";
 import { CacheWarmer } from "./cache-warmer.ts";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.ts";
+import type { ExecutionPolicy } from "./execution-policy.ts";
 import type { ExtensionRunner, LoadExtensionsResult, SessionStartEvent, ToolDefinition } from "./extensions/index.ts";
 import { createToolNameMatcher } from "./mcp-servers.ts";
 import { convertToLlm } from "./messages.ts";
@@ -46,6 +47,8 @@ import { getBranchSelection } from "./virtual-models.ts";
 setDefaultStreamFn(streamSimple);
 
 export interface CreateAgentSessionOptions {
+	/** Host-managed run budget and continuation policy (used by dw-agent). */
+	executionPolicy?: ExecutionPolicy;
 	/** Working directory for project-local discovery. Default: process.cwd() */
 	cwd?: string;
 	/** Global config directory. Default: ~/.pi/agent */
@@ -189,6 +192,7 @@ function getDefaultAgentDir(): string {
  * ```
  */
 export async function createAgentSession(options: CreateAgentSessionOptions = {}): Promise<CreateAgentSessionResult> {
+	const executionPolicy = options.executionPolicy;
 	const cwd = resolvePath(options.cwd ?? options.sessionManager?.getCwd() ?? process.cwd());
 	const agentDir = options.agentDir ? resolvePath(options.agentDir) : getDefaultAgentDir();
 	let resourceLoader = options.resourceLoader;
@@ -196,6 +200,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	const authPath = options.agentDir ? join(agentDir, "auth.json") : undefined;
 	const modelsPath = options.agentDir ? join(agentDir, "models.json") : undefined;
 	const modelRuntime = options.modelRuntime ?? (await ModelRuntime.create({ authPath, modelsPath }));
+	if (executionPolicy) modelRuntime.requestGuard = () => executionPolicy.beforeModelRequest();
 
 	const settingsManager = options.settingsManager ?? SettingsManager.create(cwd, agentDir);
 	const sessionManager = options.sessionManager ?? SessionManager.create(cwd, getDefaultSessionDir(cwd, agentDir));
@@ -334,7 +339,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	const cacheWarmer = new CacheWarmer(
 		modelRuntime,
 		sessionManager,
-		() => settingsManager.getCacheWarmingMode(),
+		() => (executionPolicy ? "off" : settingsManager.getCacheWarmingMode()),
 		async (event) => extensionRunnerRef.current?.emitCacheWarmingDecision(event) ?? event.action,
 	);
 	const buildRequestOptions = (
@@ -349,7 +354,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			...options,
 			timeoutMs: options.timeoutMs ?? providerRetrySettings.timeoutMs ?? effectiveTimeoutMs,
 			websocketConnectTimeoutMs: options.websocketConnectTimeoutMs ?? settingsManager.getWebSocketConnectTimeoutMs(),
-			maxRetries: options.maxRetries ?? providerRetrySettings.maxRetries,
+			maxRetries: executionPolicy ? 0 : (options.maxRetries ?? providerRetrySettings.maxRetries),
 			maxRetryDelayMs: options.maxRetryDelayMs ?? providerRetrySettings.maxRetryDelayMs,
 			transformHeaders: async (requestHeaders) => {
 				const headers = mergeProviderAttributionHeaders(
@@ -459,6 +464,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	}
 
 	const session = new AgentSession({
+		executionPolicy,
 		agent,
 		sessionManager,
 		settingsManager,
